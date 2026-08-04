@@ -19,7 +19,8 @@ C# 软件架构
 
 1.  xxxx
 2.  xxxx
-3.  xxxx
+3.  软件截图
+4.  ![](https://raw.giteeusercontent.com/zhenhongshuai/region-screen-recorder/raw/master/ruanjianjietu.png?metadata=eyJyIjoibWFzdGVyIiwiZnAiOiJydWFuamlhbmppZXR1LnBuZyIsInVpZCI6MTMxNDM3OTUsInBpZCI6NDk1MTM4MzcsInN0byI6ImdpdC1zaGFyZGluZy1zdG8tMTB0LTA0MCIsInJwIjoicmVwb3MvYzIvNmQvYzI2ZDdhZDk0YTFjZTkwZTIzZWFlYWRjNzBmMmE5OWNkZjA3MWEyZWU4Y2VjZTY5ZGZkMjY2M2Y5MTlmZGM4MC5naXQiLCJpc3AiOnRydWUsImV4cGlyZV9hdCI6MTc4NTgyODAwMH0&signature=bIoAdmG5Y1Dwxhh2n1EKGk3TS80oye-GqCMVHpJInmY)
 
 #### 参与贡献
 
