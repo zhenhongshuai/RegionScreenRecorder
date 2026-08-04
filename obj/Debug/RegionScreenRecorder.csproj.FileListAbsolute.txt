@@ -1,0 +1,10 @@
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\bin\Debug\RegionScreenRecorder.exe.config
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\bin\Debug\RegionScreenRecorder.exe
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\bin\Debug\RegionScreenRecorder.pdb
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.csproj.AssemblyReference.cache
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.Properties.Resources.resources
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.csproj.GenerateResource.cache
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.csproj.CoreCompileInputs.cache
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.exe
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.pdb
+C:\Users\ZHS\Documents\Visual Studio 2019\RegionScreenRecorder\obj\Debug\RegionScreenRecorder.MainForm.resources
