@@ -78,7 +78,7 @@ namespace RegionScreenRecorder
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(342, 203);
+            this.ClientSize = new System.Drawing.Size(464, 293);
             this.Controls.Add(this.btnSelectRegion);
             this.Controls.Add(this.lblRegionInfo);
             this.Controls.Add(this.btnStop);

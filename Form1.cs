@@ -5,9 +5,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
-using System.Threading.Tasks;
-using System.Drawing;
 using System.Drawing.Imaging;
+using System.Text;
 
 namespace RegionScreenRecorder
 {
@@ -32,20 +31,100 @@ namespace RegionScreenRecorder
         private const int SRCCOPY = 0x00CC0020;
         #endregion
 
-        private Rectangle _recordRegion;        // 录制区域
+        private Rectangle _recordRegion;
         private bool _isRecording = false;
         private Process _ffmpegProcess;
         private Thread _captureThread;
-        private readonly int _fps = 24;         // 帧率
+        private readonly int _fps = 24;
         private string _videoSavePath;
+
+        // 音频控件
+        private GroupBox grpAudio;
+        private CheckBox chkRecordAudio;
+        private ComboBox cmbAudioDevices;
+        private Button btnRefreshDevices;
+        private Label lblAudioStatus;
 
         public MainForm()
         {
             InitializeComponent();
             btnStop.Enabled = false;
+            InitializeAudioControls();
         }
 
-        // 鼠标框选区域按钮
+        private void InitializeAudioControls()
+        {
+            grpAudio = new GroupBox
+            {
+                Text = "音频录制设置",
+                Location = new Point(12, 180),
+                Size = new Size(460, 110)
+            };
+
+            chkRecordAudio = new CheckBox
+            {
+                Text = "同时录制麦克风/音频",
+                AutoSize = true,
+                Location = new Point(10, 20),
+                Checked = false
+            };
+
+            cmbAudioDevices = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = 320,
+                Location = new Point(10, 50),
+                Enabled = false
+            };
+
+            btnRefreshDevices = new Button
+            {
+                Text = "刷新设备",
+                Location = new Point(340, 49),
+                Size = new Size(75, 23),
+                Enabled = false
+            };
+
+            lblAudioStatus = new Label
+            {
+                Text = "",
+                AutoSize = true,
+                Location = new Point(10, 80),
+                ForeColor = Color.Gray
+            };
+
+            chkRecordAudio.CheckedChanged += (s, e) =>
+            {
+                cmbAudioDevices.Enabled = chkRecordAudio.Checked;
+                btnRefreshDevices.Enabled = chkRecordAudio.Checked;
+            };
+
+            btnRefreshDevices.Click += (s, e) => LoadAudioDevices();
+
+            grpAudio.Controls.Add(chkRecordAudio);
+            grpAudio.Controls.Add(cmbAudioDevices);
+            grpAudio.Controls.Add(btnRefreshDevices);
+            grpAudio.Controls.Add(lblAudioStatus);
+            this.Controls.Add(grpAudio);
+
+            this.Load += (s, e) => LoadAudioDevices();
+        }
+
+        // ========== 临时固定中文设备名，跳过扫描乱码问题 ==========
+        private void LoadAudioDevices()
+        {
+            cmbAudioDevices.Items.Clear();
+
+            // 【手动填写你的设备名】
+            cmbAudioDevices.Items.Add("麦克风 (Realtek(R) Audio)");
+            // 如需录系统声音，取消下面注释：
+            // cmbAudioDevices.Items.Add("立体声混音 (Realtek(R) Audio)");
+
+            cmbAudioDevices.SelectedIndex = 0;
+            lblAudioStatus.Text = "已加载预设设备（手动模式）";
+            lblAudioStatus.ForeColor = Color.Green;
+        }
+
         private void btnSelectRegion_Click(object sender, EventArgs e)
         {
             Hide();
@@ -60,30 +139,14 @@ namespace RegionScreenRecorder
             Show();
         }
 
-        // 开始录制
         private void btnStart_Click(object sender, EventArgs e)
         {
-            //if (_recordRegion.Width <= 0 || _recordRegion.Height <= 0)
-            //{
-            //    MessageBox.Show("请先框选录制区域！");
-            //    return;
-            //}
-
-            //int w = _recordRegion.Width & ~1;
-            //int h = _recordRegion.Height & ~1;
-            //_recordRegion = new Rectangle(_recordRegion.X, _recordRegion.Y, w, h);
-
-            //if (w < 16 || h < 16)
-            //{
-            //    MessageBox.Show("录制区域尺寸过小，请重新选择区域！");
-            //    return;
-            //}
             if (_recordRegion.Width <= 0 || _recordRegion.Height <= 0)
             {
                 MessageBox.Show("请先框选录制区域！");
                 return;
             }
-            // 强制宽高变成偶数
+
             int w = _recordRegion.Width;
             int h = _recordRegion.Height;
             w = w - (w % 2);
@@ -107,68 +170,82 @@ namespace RegionScreenRecorder
             _isRecording = true;
             _captureThread = new Thread(CaptureLoop) { IsBackground = true };
             _captureThread.Start();
-            
+
             btnStart.Enabled = false;
             btnSelectRegion.Enabled = false;
             btnStop.Enabled = true;
         }
 
-        // 停止录制
+        // ========== 核心修复：停止逻辑 ==========
         private void btnStop_Click(object sender, EventArgs e)
         {
             if (!_isRecording) return;
-            _isRecording = false;
-            Thread.Sleep(200);
+            _isRecording = false;  // 先通知捕获线程停止
 
-            try
+            // 等捕获线程结束（最多3秒），确保不再往 pipe 写数据
+            if (_captureThread != null && _captureThread.IsAlive)
+                _captureThread.Join(3000);
+
+            // 后台线程处理 FFmpeg 退出，防止 UI 卡死
+            new Thread(() =>
             {
-                _ffmpegProcess?.StandardInput.Close();
-                _ffmpegProcess?.StandardInput.BaseStream?.Dispose();
-
-                // 新开后台线程等待ffmpeg，防止UI卡死
-                new Thread(() =>
+                try
                 {
-                    bool exit = _ffmpegProcess.WaitForExit(10000);
-                    if (!exit)
-                    {
-                        _ffmpegProcess.Kill();
-                        MessageBox.Show("录制超时，强制终止，视频可能损坏！");
-                    }
+                    // 关闭视频输入管道，FFmpeg 收到 EOF
+                    _ffmpegProcess?.StandardInput.Close();
+                }
+                catch { }
 
+                // 因为有 -shortest，视频 EOF 后 FFmpeg 会自动停止音频并退出
+                bool exit = _ffmpegProcess.WaitForExit(8000);
+
+                if (!exit)
+                {
+                    try { _ffmpegProcess.Kill(); } catch { }
                     this.Invoke(new Action(() =>
                     {
-                        _ffmpegProcess?.Dispose();
-                        _ffmpegProcess = null;
-                        btnStart.Enabled = true;
-                        btnSelectRegion.Enabled = true;
-                        btnStop.Enabled = false;
-                        MessageBox.Show($"录制完成！\n{_videoSavePath}");
+                        MessageBox.Show("录制超时，强制终止，视频可能损坏！");
                     }));
-                })
-                { IsBackground = true }.Start();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"停止异常：{ex.Message}");
-                _ffmpegProcess?.Dispose();
-                _ffmpegProcess = null;
-                btnStart.Enabled = true;
-                btnSelectRegion.Enabled = true;
-                btnStop.Enabled = false;
-            }
+                }
+
+                this.Invoke(new Action(() =>
+                {
+                    _ffmpegProcess?.Dispose();
+                    _ffmpegProcess = null;
+                    btnStart.Enabled = true;
+                    btnSelectRegion.Enabled = true;
+                    btnStop.Enabled = false;
+
+                    if (exit)
+                        MessageBox.Show($"录制完成！\n{_videoSavePath}");
+                }));
+            })
+            { IsBackground = true }.Start();
         }
-        // 在类内部添加
-        private Task _stderrReadTask;
-        // 启动FFmpeg管道接收图片流
+
+        // ========== 核心修复：FFmpeg 参数加 -shortest ==========
         void StartFFmpeg()
         {
+            bool recordAudio = chkRecordAudio.Checked
+                && cmbAudioDevices.SelectedItem != null;
+
+            // 视频加 -use_wallclock_as_timestamps 1，让时间戳基于真实写入时间
+            string args = $"-y -fflags +genpts " +
+                $"-f rawvideo -pix_fmt bgr24 -video_size {_recordRegion.Width}x{_recordRegion.Height} -framerate {_fps} -use_wallclock_as_timestamps 1 -thread_queue_size 4096 -i pipe:0 ";
+
+            if (recordAudio)
+            {
+                string deviceName = cmbAudioDevices.SelectedItem.ToString();
+                args += $"-f dshow -audio_buffer_size 100 -thread_queue_size 4096 -i audio=\"{deviceName}\" " +
+                        $"-c:a aac -b:a 128k -ar 44100 ";
+            }
+
+            args += $"-c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -vsync cfr -movflags +faststart -shortest \"{_videoSavePath}\"";
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = @"ffmpeg\ffmpeg.exe",
-                Arguments =
-                    $"-y -thread_queue_size 1024 " +
-                    $"-f rawvideo -pix_fmt bgr24 -video_size {_recordRegion.Width}x{_recordRegion.Height} -framerate {_fps} -i pipe:0 " +
-                    $"-c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -movflags +faststart \"{_videoSavePath}\"",
+                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardInput = true,
@@ -177,7 +254,6 @@ namespace RegionScreenRecorder
             };
             _ffmpegProcess = Process.Start(startInfo);
 
-            // 单独线程消费stderr，防止缓冲区阻塞
             new Thread(() =>
             {
                 while (!_ffmpegProcess.HasExited)
@@ -188,50 +264,28 @@ namespace RegionScreenRecorder
             { IsBackground = true }.Start();
         }
 
-        // 循环截屏写入FFmpeg标准输入
-        //void CaptureLoop()
-        //{
-        //    long frameDelay = (long)(1000.0 / _fps);
-        //    while (_isRecording)
-        //    {
-        //        var bitmap = CaptureRegion(_recordRegion);
-        //        if (bitmap == null) continue;
-
-        //        // BGR24 原始像素数据
-        //        var bmpData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-        //            System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-        //        int byteCount = bmpData.Stride * bitmap.Height;
-        //        byte[] buffer = new byte[byteCount];
-        //        System.Runtime.InteropServices.Marshal.Copy(bmpData.Scan0, buffer, 0, byteCount);
-        //        bitmap.UnlockBits(bmpData);
-
-        //        try
-        //        {
-        //            _ffmpegProcess.StandardInput.BaseStream.Write(buffer, 0, buffer.Length);
-        //            _ffmpegProcess.StandardInput.BaseStream.Flush();
-        //        }
-        //        catch
-        //        {
-        //            break;
-        //        }
-
-        //        bitmap.Dispose();
-        //        Thread.Sleep((int)frameDelay);
-        //    }
-        //}
+        // ========== 核心修复：精确帧率控制 ==========
         void CaptureLoop()
         {
-            long frameDelay = (long)(1000.0 / _fps);
+            var sw = Stopwatch.StartNew();
+            long frameInterval = (long)(1000.0 / _fps);  // 24fps = 41.6ms
+            int frameIndex = 0;
             int width = _recordRegion.Width;
             int height = _recordRegion.Height;
-            int cleanLineBytes = width * 3; // ffmpeg严格要求：每行像素字节，不含填充
+            int cleanLineBytes = width * 3;
 
             while (_isRecording)
             {
+                // 计算下一帧的目标时间点，精确等待
+                long targetTime = frameIndex * frameInterval;
+                long sleepMs = targetTime - sw.ElapsedMilliseconds;
+                if (sleepMs > 0)
+                    Thread.Sleep((int)sleepMs);
+
                 Bitmap bitmap = CaptureRegion(_recordRegion);
                 if (bitmap == null)
                 {
-                    Thread.Sleep((int)frameDelay);
+                    frameIndex++;  // 即使截图失败也推进时间，避免累积延迟
                     continue;
                 }
 
@@ -246,7 +300,6 @@ namespace RegionScreenRecorder
                     {
                         for (int y = 0; y < height; y++)
                         {
-                            // 只复制有效像素，跳过每行末尾系统填充字节
                             Buffer.MemoryCopy(
                                 srcPtr + y * bmpData.Stride,
                                 dstPtr + y * cleanLineBytes,
@@ -270,12 +323,10 @@ namespace RegionScreenRecorder
                 }
 
                 bitmap.Dispose();
-                Thread.Sleep((int)frameDelay);
+                frameIndex++;
             }
         }
-        /// <summary>
-        /// Win32 API 截取指定屏幕区域
-        /// </summary>
+
         private Bitmap CaptureRegion(Rectangle rect)
         {
             IntPtr hScreenDC = GetDC(IntPtr.Zero);
@@ -286,7 +337,6 @@ namespace RegionScreenRecorder
             BitBlt(hMemDC, 0, 0, rect.Width, rect.Height, hScreenDC, rect.X, rect.Y, SRCCOPY);
             Bitmap bmp = Bitmap.FromHbitmap(hBitmap);
 
-            // 释放GDI资源（极其重要，防止内存泄漏）
             SelectObject(hMemDC, hOldBmp);
             DeleteObject(hBitmap);
             DeleteObject(hOldBmp);
